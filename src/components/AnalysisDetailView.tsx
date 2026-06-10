@@ -81,7 +81,7 @@ export default function AnalysisDetailView({ initialAnalysis }: AnalysisDetailVi
 
     mapRef.current = map;
 
-    map.on('load', () => {
+    const setupMapLayers = () => {
       setMapLoaded(true);
 
       // Add AOI source
@@ -160,7 +160,13 @@ export default function AnalysisDetailView({ initialAnalysis }: AnalysisDetailVi
         minzoom: 0,
         maxzoom: 20
       });
-    });
+    };
+
+    if (map.loaded()) {
+      setupMapLayers();
+    } else {
+      map.on('load', setupMapLayers);
+    }
 
     return () => {
       map.remove();

@@ -81,7 +81,7 @@ export default function AoiDrawerMap({ onPolygonCreated, maxQuota, initialGeomet
 
     mapRef.current = map;
 
-    map.on('load', () => {
+    const setupMapLayers = () => {
       setMapLoaded(true);
 
       // Add GeoJSON source for custom polygon drawing
@@ -143,7 +143,13 @@ export default function AoiDrawerMap({ onPolygonCreated, maxQuota, initialGeomet
         },
         filter: ['==', 'isFirst', true]
       });
-    });
+    };
+
+    if (map.loaded()) {
+      setupMapLayers();
+    } else {
+      map.on('load', setupMapLayers);
+    }
 
     // Map Click: place coordinate point
     map.on('click', (e: any) => {
