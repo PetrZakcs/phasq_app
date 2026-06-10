@@ -29,15 +29,35 @@ export async function POST(req: Request) {
       return NextResponse.json({ success: false, error: 'AOI not found' }, { status: 404 });
     }
 
-    // 3. Quota checking
-    const { data: profile, error: profileError } = await supabase
+    // 3. Quota checking (with self-healing fallback)
+    let { data: profile, error: profileError } = await supabase
       .from('profiles')
       .select('*')
       .eq('id', session.user.id)
       .single();
 
     if (profileError || !profile) {
-      return NextResponse.json({ success: false, error: 'Profile not found' }, { status: 404 });
+      console.warn(`Profile for user ${session.user.id} not found. Attempting self-healing creation.`);
+      const { data: newProfile, error: insertError } = await supabase
+        .from('profiles')
+        .insert({
+          id: session.user.id,
+          email: session.user.email || 'user@example.com',
+          full_name: session.user.user_metadata?.full_name || 'Vážený uživatel',
+          organization: 'Farma',
+          plan: 'agri_basic',
+          hectare_quota: 1000,
+          hectare_used: 0
+        })
+        .select()
+        .single();
+        
+      if (insertError || !newProfile) {
+        console.error('Failed to self-heal profile:', insertError);
+        return NextResponse.json({ success: false, error: 'Profile not found' }, { status: 404 });
+      }
+      
+      profile = newProfile;
     }
 
     const requestedHa = Number(aoi.area_ha);
