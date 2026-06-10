@@ -303,26 +303,26 @@ export default function AnalysisDetailView({ initialAnalysis }: AnalysisDetailVi
   let trendSign = '';
   let trendVal = 0;
   let isAlert = false;
-  let alertMsg = 'NOMINAL';
+  let alertMsg = 'NOMINÁLNÍ';
 
   if (isNdvi) {
     mainMetric = results.mean_ndvi?.toFixed(2) || '0.00';
     trendVal = results.trend_14d || 0;
     trendSign = trendVal >= 0 ? '+' : '';
     isAlert = results.alert_status === 'DROUGHT RISK' || results.mean_ndvi < 0.4;
-    alertMsg = isAlert ? 'VEGETATION WATER STRESS' : 'VEGETATION HEALTH NOMINAL';
+    alertMsg = isAlert ? 'RŮSTOVÝ STRES POROSTU' : 'STAV VEGETACE NOMINÁLNÍ';
   } else if (isNdwi) {
     mainMetric = results.mean_ndwi?.toFixed(2) || '0.00';
     trendVal = results.trend_14d || 0;
     trendSign = trendVal >= 0 ? '+' : '';
     isAlert = results.alert_status === 'DROUGHT RISK' || results.mean_ndwi < 0.15;
-    alertMsg = isAlert ? 'CRITICAL DRYNESS DETECTED' : 'CANOPY MOISTURE NOMINAL';
+    alertMsg = isAlert ? 'KRITICKÝ DEFICIT VODY' : 'VLHKOST PLETIV NOMINÁLNÍ';
   } else {
     mainMetric = `${results.mean_backscatter_vv?.toFixed(1) || '0.0'} dB`;
     trendVal = results.trend_14d || 0;
     trendSign = trendVal >= 0 ? '+' : '';
     isAlert = results.drought_risk || false;
-    alertMsg = isAlert ? 'SOIL MOISTURE DEFICIT' : 'SOIL MOISTURE NOMINAL';
+    alertMsg = isAlert ? 'DEFICIT PŮDNÍ VLHKOSTI' : 'VLHKOST PŮDY NOMINÁLNÍ';
   }
 
   const chartPoints = results.timeseries || [];
@@ -341,10 +341,10 @@ export default function AnalysisDetailView({ initialAnalysis }: AnalysisDetailVi
               className="flex items-center space-x-1.5 text-text-secondary hover:text-text-primary text-[10px] font-mono mb-1.5 transition-colors"
             >
               <ArrowLeft className="w-3.5 h-3.5" />
-              <span>RETURN_TO_DASHBOARD</span>
+              <span>ZPĚT_NA_NÁSTĚNKU</span>
             </Link>
-            <h1 className="text-lg font-bold tracking-wider font-mono uppercase">TELEMETRY_ANALYSIS_REPORT</h1>
-            <p className="text-[9px] text-text-secondary font-mono">// SECTOR: {analysis.aoi_name?.toUpperCase()} // TYPE: {analysis.analysis_type.toUpperCase()}</p>
+            <h1 className="text-lg font-bold tracking-wider font-mono uppercase">AGRONOMICKÝ REPORT VEGETACE (PHASQ)</h1>
+            <p className="text-[9px] text-text-secondary font-mono">// SEKTOR: {analysis.aoi_name?.toUpperCase()} // INDEX: {analysis.analysis_type.toUpperCase()}</p>
           </div>
           
           <div className="flex space-x-2">
@@ -353,14 +353,14 @@ export default function AnalysisDetailView({ initialAnalysis }: AnalysisDetailVi
               className="bg-bg-secondary hover:bg-bg-surface border border-border-default text-text-primary px-3 py-1.5 rounded-sm text-[11px] font-mono tracking-wider transition-colors cursor-pointer min-h-[34px] flex items-center"
             >
               {copied ? <Check className="w-3.5 h-3.5 text-accent-primary mr-1.5" /> : <Share2 className="w-3.5 h-3.5 mr-1.5" />}
-              <span>{copied ? 'COPIED_URL' : 'SHARE_CONSOLE'}</span>
+              <span>{copied ? 'URL_KOPÍROVÁNO' : 'SDÍLET_KONZOLI'}</span>
             </button>
             <button
               onClick={handleDownloadPdf}
               className="bg-accent-primary hover:bg-accent-primary/95 text-bg-primary px-4 py-1.5 rounded-sm text-[11px] font-bold tracking-wider uppercase transition-colors cursor-pointer min-h-[34px] flex items-center"
             >
               <Download className="w-3.5 h-3.5 mr-1.5" />
-              <span>Download PDF</span>
+              <span>STÁHNOUT PDF</span>
             </button>
           </div>
         </div>
@@ -369,12 +369,12 @@ export default function AnalysisDetailView({ initialAnalysis }: AnalysisDetailVi
         <div className="hidden print:block border-b-2 border-border-default pb-4 mb-4">
           <div className="flex justify-between items-center">
             <div className="font-mono">
-              <h1 className="text-lg font-bold">PHASQ TELEMETRY REPORT</h1>
-              <p className="text-[10px]">SECTOR: {analysis.aoi_name?.toUpperCase()} // ID: {analysis.id}</p>
+              <h1 className="text-lg font-bold">PHASQ AGRONOMICKÝ REPORT</h1>
+              <p className="text-[10px]">SEKTOR: {analysis.aoi_name?.toUpperCase()} // ID: {analysis.id}</p>
             </div>
             <div className="font-mono text-right text-[10px]">
-              <p>GENERATED: {new Date().toLocaleString()}</p>
-              <p>COORDINATES CENTER: WGS84 REFERENCE</p>
+              <p>VYGENEROVÁNO: {new Date().toLocaleString()}</p>
+              <p>SOUŘADNICOVÝ SYSTÉM: WGS84 REFERENCE</p>
             </div>
           </div>
         </div>
@@ -387,7 +387,7 @@ export default function AnalysisDetailView({ initialAnalysis }: AnalysisDetailVi
             
             <div className="flex justify-between items-center mb-3 border-b border-border-subtle pb-2">
               <span className="text-[10px] font-mono tracking-wider text-text-secondary uppercase">
-                Spatial Coordinate Overlay
+                Prostorový souřadnicový překryv
               </span>
               <span className="text-[9px] font-mono text-text-muted">GEE_WGS84_PROJ</span>
             </div>
@@ -399,7 +399,7 @@ export default function AnalysisDetailView({ initialAnalysis }: AnalysisDetailVi
 
             {/* Colors scale legend */}
             <div className="mt-4 pt-3 border-t border-border-subtle">
-              <p className="text-[8px] font-mono text-text-secondary uppercase mb-2">Spectral Index Legend</p>
+              <p className="text-[8px] font-mono text-text-secondary uppercase mb-2">Legenda spektrálního indexu</p>
               <div className="space-y-1">
                 {/* Desaturated Palantir style gradient scales */}
                 <div className={`w-full h-1.5 rounded-sm ${
@@ -411,21 +411,21 @@ export default function AnalysisDetailView({ initialAnalysis }: AnalysisDetailVi
                 <div className="flex justify-between font-mono text-[8px] text-text-muted">
                   {isNdvi ? (
                     <>
-                      <span>0.20 (DEPLETED)</span>
+                      <span>0.20 (NÍZKÝ POROST)</span>
                       <span>0.50</span>
-                      <span>0.88 (OPTIMAL)</span>
+                      <span>0.88 (OPTIMÁLNÍ)</span>
                     </>
                   ) : isNdwi ? (
                     <>
-                      <span>-0.05 (DRY)</span>
+                      <span>-0.05 (DRY STRES)</span>
                       <span>0.10</span>
-                      <span>0.28 (HYDRATED)</span>
+                      <span>0.28 (VODNÍ DOSTATEK)</span>
                     </>
                   ) : (
                     <>
-                      <span>-18.7 dB (DRY)</span>
+                      <span>-18.7 dB (SUCHÁ PŮDA)</span>
                       <span>-13.0 dB</span>
-                      <span>-8.2 dB (WET)</span>
+                      <span>-8.2 dB (VLHKÁ PŮDA)</span>
                     </>
                   )}
                 </div>
@@ -442,7 +442,7 @@ export default function AnalysisDetailView({ initialAnalysis }: AnalysisDetailVi
               {/* Big primary index number */}
               <div className="bg-bg-secondary border border-border-default rounded-sm p-4 flex flex-col justify-between md:col-span-2 min-h-[90px]">
                 <div className="flex justify-between items-center text-[9px] font-mono text-text-secondary tracking-wider">
-                  <span>MEAN_{analysis.analysis_type.toUpperCase()}_VALUE</span>
+                  <span>PRŮMĚRNÁ_HODNOTA_{analysis.analysis_type.toUpperCase()}</span>
                   <span className={`px-1.5 py-0.5 rounded-sm font-bold text-[8px] border ${
                     isAlert ? 'bg-accent-danger/10 border-accent-danger/20 text-accent-danger' : 'bg-accent-primary/10 border-accent-primary/20 text-accent-primary'
                   }`}>
@@ -452,19 +452,19 @@ export default function AnalysisDetailView({ initialAnalysis }: AnalysisDetailVi
                 <div className="flex items-baseline space-x-3 mt-1">
                   <span className="text-2xl font-bold font-mono text-text-primary">{mainMetric}</span>
                   <span className={`text-[10px] font-mono font-semibold ${trendVal >= 0 ? 'text-accent-primary' : 'text-accent-danger'}`}>
-                    {trendSign}{trendVal.toFixed(2)} (14d delta)
+                    {trendSign}{trendVal.toFixed(2)} (trend za 14 dní)
                   </span>
                 </div>
               </div>
 
               {/* Coverage details */}
               <div className="bg-bg-secondary border border-border-default rounded-sm p-4 flex flex-col justify-between min-h-[90px]">
-                <span className="text-[9px] font-mono text-text-secondary tracking-wider block">SCENES_COUNT</span>
+                <span className="text-[9px] font-mono text-text-secondary tracking-wider block">POČET_SNÍMKŮ</span>
                 <div>
                   <div className="text-base font-bold font-mono text-text-primary">
-                    {results.scenes_count || 3} SCENES
+                    {results.scenes_count || 3} SNÍMKŮ
                   </div>
-                  <p className="text-[8px] text-text-muted mt-0.5 font-mono">// GEE cache collections</p>
+                  <p className="text-[8px] text-text-muted mt-0.5 font-mono">// z cache Google Earth Engine</p>
                 </div>
               </div>
             </div>
@@ -473,13 +473,13 @@ export default function AnalysisDetailView({ initialAnalysis }: AnalysisDetailVi
             <div className="bg-bg-secondary border border-border-default rounded-sm p-4 space-y-2">
               <h3 className="text-[9px] font-mono uppercase text-accent-primary tracking-wider flex items-center">
                 <ShieldAlert className="w-3.5 h-3.5 mr-1" />
-                SATELLITE DATA INTERPRETATION
+                AGRONOMICKÁ INTERPRETACE A DOPORUČENÍ
               </h3>
               <p className="text-[11px] text-text-secondary leading-relaxed font-mono">
-                {results.ai_summary || 'No text packaged for this report.'}
+                {results.ai_summary || 'Žádná data pro agronomické doporučení.'}
               </p>
               <div className="text-[8px] text-text-muted font-mono leading-normal pt-1.5 border-t border-border-subtle/40 mt-2">
-                // PLATFORM AUDIT REPORT: Calculations are 100% deterministic mathematical values. GPT-4o was strictly limited to text formatting.
+                // PROTOKOL AGRO-ANALÝZY: Výpočty jsou založeny na přímých fyzikálních měřeních družic Sentinel. Textový výstup zohledňuje zadané plodiny a sezónní vývoj.
               </div>
             </div>
 
@@ -488,10 +488,10 @@ export default function AnalysisDetailView({ initialAnalysis }: AnalysisDetailVi
               
               <div className="flex justify-between items-center mb-3 border-b border-border-subtle pb-2">
                 <span className="text-[10px] font-mono tracking-wider text-text-secondary uppercase">
-                  Timeseries Telemetry Curve
+                  Časová řada spektrálního indexu
                 </span>
                 <span className="text-[9px] font-mono text-text-muted">
-                  REF_SCALE: VALUES_OVER_TIME
+                  REF_MĚŘÍTKO: VÝVOJ V ČASE
                 </span>
               </div>
               
