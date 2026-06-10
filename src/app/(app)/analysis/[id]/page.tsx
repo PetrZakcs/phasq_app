@@ -1,6 +1,6 @@
 import React from 'react';
 import { notFound } from 'next/navigation';
-import { getAnalysisDetail } from '@/lib/data';
+import { getAnalysisDetailServer } from '@/lib/data-server';
 import AnalysisDetailView from '@/components/AnalysisDetailView';
 
 interface PageProps {
@@ -10,7 +10,7 @@ interface PageProps {
 export default async function AnalysisDetailPage({ params }: PageProps) {
   const { id } = await params;
 
-  const analysis = await getAnalysisDetail(id);
+  const analysis = await getAnalysisDetailServer(id);
   if (!analysis) {
     notFound();
   }

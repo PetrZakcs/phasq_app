@@ -1,6 +1,6 @@
 import React from 'react';
 import { notFound } from 'next/navigation';
-import { getAOIDetail, getSentinelScenes, getAnalyses } from '@/lib/data';
+import { getAOIDetailServer, getSentinelScenesServer, getAnalysesServer } from '@/lib/data-server';
 import AoiDetailView from '@/components/AoiDetailView';
 
 interface PageProps {
@@ -11,13 +11,13 @@ export default async function AoiDetailPage({ params }: PageProps) {
   const { id } = await params;
 
   // Fetch all details server-side
-  const aoi = await getAOIDetail(id);
+  const aoi = await getAOIDetailServer(id);
   if (!aoi) {
     notFound();
   }
 
-  const scenes = await getSentinelScenes(id);
-  const allAnalyses = await getAnalyses();
+  const scenes = await getSentinelScenesServer(id);
+  const allAnalyses = await getAnalysesServer();
   const aoiAnalyses = allAnalyses.filter((a) => a.aoi_id === id);
 
   return (
