@@ -45,7 +45,6 @@ export interface Analysis {
 // Check if we should use mock data
 const isMockMode = () => {
   return (
-    process.env.NEXT_PUBLIC_USE_MOCK_GEE === 'true' ||
     !process.env.NEXT_PUBLIC_SUPABASE_URL ||
     process.env.NEXT_PUBLIC_SUPABASE_URL.includes('your-supabase-project')
   );
