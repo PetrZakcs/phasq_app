@@ -26,6 +26,7 @@ export interface Analysis {
   user_id: string;
   aoi_id: string;
   aoi_name?: string;
+  aoi_geometry?: any;
   name: string;
   analysis_type: 'ndvi' | 'ndwi' | 'radiometric' | 'polarimetric' | 'interferometric';
   status: 'pending' | 'processing' | 'completed' | 'failed';
@@ -270,7 +271,7 @@ export async function getAnalysisDetail(id: string): Promise<Analysis | null> {
   const supabase = createClientComponent();
   const { data, error } = await supabase
     .from('analyses')
-    .select('*, aoi:aoi_id(name)')
+    .select('*, aoi:aoi_id(name, geometry)')
     .eq('id', id)
     .single();
 
@@ -282,6 +283,7 @@ export async function getAnalysisDetail(id: string): Promise<Analysis | null> {
   return {
     ...data,
     aoi_name: data.aoi?.name || 'Unknown AOI',
+    aoi_geometry: data.aoi?.geometry || null,
   } as Analysis;
 }
 

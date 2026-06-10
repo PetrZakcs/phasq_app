@@ -4,6 +4,8 @@ import React, { useState, useRef, useEffect } from 'react';
 import { calculatePolygonArea } from '@/lib/geo';
 import { MapPin, Crosshair, Check, RotateCcw, AlertCircle, HelpCircle } from 'lucide-react';
 
+import 'maplibre-gl/dist/maplibre-gl.css';
+
 interface AoiDrawerMapProps {
   onPolygonCreated: (geojson: any, areaHa: number) => void;
   maxQuota: number;
@@ -11,193 +13,268 @@ interface AoiDrawerMapProps {
 }
 
 export default function AoiDrawerMap({ onPolygonCreated, maxQuota, initialGeometry }: AoiDrawerMapProps) {
-  const [points, setPoints] = useState<[number, number][]>([]); // pixel points for rendering
-  const [coords, setCoords] = useState<[number, number][]>([]); // projected lat/lng points
+  const [mapLoaded, setMapLoaded] = useState(false);
+  const mapContainerRef = useRef<HTMLDivElement>(null);
+  const mapRef = useRef<any>(null);
+  
+  const [coords, setCoords] = useState<[number, number][]>([]);
   const [isClosed, setIsClosed] = useState(false);
   const [area, setArea] = useState(0);
-  const containerRef = useRef<HTMLDivElement>(null);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
 
-  // Default coordinate center (Czech Republic - Vysocina area)
-  const [centerLng, setCenterLng] = useState(15.60);
-  const [centerLat, setCenterLat] = useState(49.40);
-  const mapZoom = 13; // Zoom scale level
+  // Ref to store coordinates/isClosed for map click callback closures
+  const stateRef = useRef({ coords: [] as [number, number][], isClosed: false });
 
-  // Convert lat/lng to container pixels (tactical grid map projection)
-  const getPixelsFromLatLng = (lng: number, lat: number, width: number, height: number) => {
-    // Simple equirectangular projection centered around CR Vysocina coordinates
-    const scaleX = (width * mapZoom) / 360;
-    const scaleY = (height * mapZoom) / 180;
-    
-    const x = width / 2 + (lng - centerLng) * scaleX;
-    const y = height / 2 - (lat - centerLat) * scaleY;
-    return [x, y];
-  };
-
-  // Convert container pixels back to lat/lng
-  const getLatLngFromPixels = (x: number, y: number, width: number, height: number) => {
-    const scaleX = (width * mapZoom) / 360;
-    const scaleY = (height * mapZoom) / 180;
-
-    const lng = centerLng + (x - width / 2) / scaleX;
-    const lat = centerLat - (y - height / 2) / scaleY;
-    
-    // Round for precision
-    return [Math.round(lng * 10000) / 10000, Math.round(lat * 10000) / 10000] as [number, number];
-  };
-
-  // Effect to load initial geometry from parent (e.g. LPIS import)
   useEffect(() => {
+    stateRef.current = { coords, isClosed };
+  }, [coords, isClosed]);
+
+  // 1. Initialize MapLibre GL Map
+  useEffect(() => {
+    if (typeof window === 'undefined' || !mapContainerRef.current) return;
+
+    // Load MapLibre GL dynamically to prevent SSR failures
+    const maplibregl = require('maplibre-gl');
+
+    const map = new maplibregl.Map({
+      container: mapContainerRef.current,
+      style: {
+        version: 8,
+        sources: {
+          'esri-satellite': {
+            type: 'raster',
+            tiles: [
+              'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'
+            ],
+            tileSize: 256,
+            attribution: 'Esri, Maxar'
+          }
+        },
+        layers: [
+          {
+            id: 'esri-satellite-layer',
+            type: 'raster',
+            source: 'esri-satellite',
+            minzoom: 0,
+            maxzoom: 20
+          }
+        ]
+      },
+      center: [15.60, 49.40], // Centered around Jihlava/Vysočina, Czech Republic
+      zoom: 13,
+      attributionControl: false
+    });
+
+    mapRef.current = map;
+
+    map.on('load', () => {
+      setMapLoaded(true);
+
+      // Add GeoJSON source for custom polygon drawing
+      map.addSource('drawn-polygon', {
+        type: 'geojson',
+        data: {
+          type: 'FeatureCollection',
+          features: []
+        }
+      });
+
+      // Polygon interior fill
+      map.addLayer({
+        id: 'drawn-polygon-fill',
+        type: 'fill',
+        source: 'drawn-polygon',
+        paint: {
+          'fill-color': '#cc0000',
+          'fill-opacity': 0.15
+        },
+        filter: ['==', '$type', 'Polygon']
+      });
+
+      // Line outlines
+      map.addLayer({
+        id: 'drawn-polygon-outline',
+        type: 'line',
+        source: 'drawn-polygon',
+        paint: {
+          'line-color': '#cc0000',
+          'line-width': 2.5
+        }
+      });
+
+      // Vertices circles
+      map.addLayer({
+        id: 'drawn-polygon-points',
+        type: 'circle',
+        source: 'drawn-polygon',
+        paint: {
+          'circle-radius': 5,
+          'circle-color': '#cc0000',
+          'circle-stroke-color': '#000000',
+          'circle-stroke-width': 1.5
+        },
+        filter: ['==', '$type', 'Point']
+      });
+
+      // Snap target (First point) indicator
+      map.addLayer({
+        id: 'drawn-polygon-first-point',
+        type: 'circle',
+        source: 'drawn-polygon',
+        paint: {
+          'circle-radius': 7,
+          'circle-color': '#ff9500',
+          'circle-stroke-color': '#000000',
+          'circle-stroke-width': 2
+        },
+        filter: ['==', 'isFirst', true]
+      });
+    });
+
+    // Map Click: place coordinate point
+    map.on('click', (e: any) => {
+      const { coords: currentCoords, isClosed: currentClosed } = stateRef.current;
+      if (currentClosed) return;
+
+      // Snap-to-first-vertex check (closes polygon if clicks is close to first vertex)
+      if (currentCoords.length >= 3) {
+        const firstPointPix = map.project(currentCoords[0]);
+        const mousePix = e.point;
+        const dist = Math.hypot(firstPointPix.x - mousePix.x, firstPointPix.y - mousePix.y);
+
+        if (dist < 15) {
+          setIsClosed(true);
+          const closedCoords = [...currentCoords, currentCoords[0]];
+          const computedArea = calculatePolygonArea(closedCoords);
+          setArea(computedArea);
+
+          const geojson = {
+            type: 'Polygon',
+            coordinates: [closedCoords]
+          };
+          onPolygonCreated(geojson, computedArea);
+          return;
+        }
+      }
+
+      // Append standard coordinate point
+      const newCoord: [number, number] = [e.lngLat.lng, e.lngLat.lat];
+      setCoords([...currentCoords, newCoord]);
+    });
+
+    // Mouse Move: pointer update on snap hover
+    map.on('mousemove', (e: any) => {
+      const { coords: currentCoords, isClosed: currentClosed } = stateRef.current;
+      if (currentClosed || currentCoords.length < 3) {
+        map.getCanvas().style.cursor = 'crosshair';
+        return;
+      }
+
+      const firstPointPix = map.project(currentCoords[0]);
+      const dist = Math.hypot(firstPointPix.x - e.point.x, firstPointPix.y - e.point.y);
+
+      if (dist < 15) {
+        map.getCanvas().style.cursor = 'pointer';
+      } else {
+        map.getCanvas().style.cursor = 'crosshair';
+      }
+    });
+
+    return () => {
+      map.remove();
+      mapRef.current = null;
+    };
+  }, []);
+
+  // 2. Synchronize coordinates states into map geojson source
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !mapLoaded) return;
+
+    const source = map.getSource('drawn-polygon');
+    if (!source) return;
+
+    const features: any[] = [];
+
+    // Map individual coordinates to point features
+    coords.forEach((c, idx) => {
+      features.push({
+        type: 'Feature',
+        properties: {
+          isFirst: idx === 0 && !isClosed && coords.length >= 3
+        },
+        geometry: {
+          type: 'Point',
+          coordinates: c
+        }
+      });
+    });
+
+    // Map paths / polygon shape
+    if (coords.length > 1) {
+      if (isClosed) {
+        features.push({
+          type: 'Feature',
+          properties: {},
+          geometry: {
+            type: 'Polygon',
+            coordinates: [[...coords, coords[0]]]
+          }
+        });
+      } else {
+        features.push({
+          type: 'Feature',
+          properties: {},
+          geometry: {
+            type: 'LineString',
+            coordinates: coords
+          }
+        });
+      }
+    }
+
+    source.setData({
+      type: 'FeatureCollection',
+      features
+    });
+  }, [coords, isClosed, mapLoaded]);
+
+  // 3. Handle external geometry changes (e.g. LPIS search selection)
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !mapLoaded) return;
+
     if (!initialGeometry || !initialGeometry.coordinates || !initialGeometry.coordinates[0]) {
       if (initialGeometry === null && isClosed) {
-        setPoints([]);
         setCoords([]);
         setIsClosed(false);
         setArea(0);
+        onPolygonCreated(null, 0);
       }
       return;
     }
 
     const polygonCoords = initialGeometry.coordinates[0];
-    const rawCoords = polygonCoords.slice(0, -1); // Remove closing duplicate point
+    const rawCoords = polygonCoords.slice(0, -1);
 
     if (rawCoords.length > 0) {
-      const avgLng = rawCoords.reduce((sum: number, c: any) => sum + c[0], 0) / rawCoords.length;
-      const avgLat = rawCoords.reduce((sum: number, c: any) => sum + c[1], 0) / rawCoords.length;
-      setCenterLng(avgLng);
-      setCenterLat(avgLat);
       setCoords(rawCoords);
       setIsClosed(true);
 
       const computedArea = calculatePolygonArea(polygonCoords);
       setArea(computedArea);
+
+      // Fit map canvas viewport around the injected coordinates
+      const maplibregl = require('maplibre-gl');
+      const bounds = rawCoords.reduce(
+        (b: any, coord: any) => b.extend(coord),
+        new maplibregl.LngLatBounds(rawCoords[0], rawCoords[0])
+      );
+
+      map.fitBounds(bounds, { padding: 50, duration: 1200 });
     }
-  }, [initialGeometry]);
-
-  // Recalculate projected pixel coordinates whenever lat/lng coordinates or map center changes
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const width = canvas.width || canvas.offsetWidth || 500;
-    const height = canvas.height || canvas.offsetHeight || 350;
-
-    const projected = coords.map(([lng, lat]) => 
-      getPixelsFromLatLng(lng, lat, width, height) as [number, number]
-    );
-    setPoints(projected);
-  }, [coords, centerLng, centerLat]);
-
-  // Redraw canvas loop
-  const draw = () => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-    if (points.length === 0) return;
-
-    // Draw polygon interior shadow
-    if (isClosed && points.length >= 3) {
-      ctx.beginPath();
-      ctx.moveTo(points[0][0], points[0][1]);
-      for (let i = 1; i < points.length; i++) {
-        ctx.lineTo(points[i][0], points[i][1]);
-      }
-      ctx.closePath();
-      ctx.fillStyle = 'rgba(204, 0, 0, 0.08)';
-      ctx.fill();
-    }
-
-    // Draw connecting lines
-    ctx.beginPath();
-    ctx.moveTo(points[0][0], points[0][1]);
-    for (let i = 1; i < points.length; i++) {
-      ctx.lineTo(points[i][0], points[i][1]);
-    }
-    if (isClosed) {
-      ctx.closePath();
-      ctx.strokeStyle = '#cc0000';
-      ctx.lineWidth = 2.5;
-    } else {
-      ctx.strokeStyle = 'rgba(204, 0, 0, 0.6)';
-      ctx.lineWidth = 2;
-    }
-    ctx.shadowBlur = 8;
-    ctx.shadowColor = '#cc0000';
-    ctx.stroke();
-    ctx.shadowBlur = 0; // reset
-
-    // Draw vertex indicators
-    points.forEach((pt, idx) => {
-      ctx.beginPath();
-      ctx.arc(pt[0], pt[1], idx === 0 && !isClosed ? 6 : 4, 0, 2 * Math.PI);
-      if (idx === 0 && !isClosed) {
-        ctx.fillStyle = '#ff9500'; // Snap target indicator
-      } else {
-        ctx.fillStyle = '#cc0000';
-      }
-      ctx.fill();
-      ctx.strokeStyle = '#0a0a0a';
-      ctx.lineWidth = 1.5;
-      ctx.stroke();
-    });
-  };
-
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const updateSize = () => {
-      canvas.width = canvas.offsetWidth;
-      canvas.height = canvas.offsetHeight;
-      draw();
-    };
-    updateSize();
-    window.addEventListener('resize', updateSize);
-    return () => window.removeEventListener('resize', updateSize);
-  }, [points, isClosed]);
-
-  // Click handler to place vertices
-  const handleCanvasClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    if (isClosed) return;
-
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const rect = canvas.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
-
-    // Check snap-to-first-vertex (closes polygon if points >= 3)
-    if (points.length >= 3) {
-      const dist = Math.hypot(x - points[0][0], y - points[0][1]);
-      if (dist < 15) {
-        setIsClosed(true);
-        // Compute area in hectares
-        const polygonCoords = [...coords, coords[0]];
-        const computedArea = calculatePolygonArea(polygonCoords);
-        setArea(computedArea);
-        
-        // Output GeoJSON Polygon format
-        const geojson = {
-          type: 'Polygon',
-          coordinates: [polygonCoords],
-        };
-        onPolygonCreated(geojson, computedArea);
-        return;
-      }
-    }
-
-    // Place point
-    const newPt: [number, number] = [x, y];
-    const newCoord = getLatLngFromPixels(x, y, canvas.width, canvas.height);
-
-    setPoints([...points, newPt]);
-    setCoords([...coords, newCoord]);
-  };
+  }, [initialGeometry, mapLoaded]);
 
   const handleReset = () => {
-    setPoints([]);
     setCoords([]);
     setIsClosed(false);
     setArea(0);
@@ -205,54 +282,51 @@ export default function AoiDrawerMap({ onPolygonCreated, maxQuota, initialGeomet
   };
 
   return (
-    <div className="flex-1 flex flex-col relative bg-bg-primary rounded-sm border border-border-default overflow-hidden min-h-[350px]">
+    <div className="flex-grow flex flex-col relative bg-bg-primary rounded-sm border border-border-default overflow-hidden min-h-[450px]">
       
-      {/* Grid Canvas Overlay */}
-      <div className="absolute inset-0 bg-[linear-gradient(to_right,#1b1b1b_1px,transparent_1px),linear-gradient(to_bottom,#1b1b1b_1px,transparent_1px)] bg-[size:1.5rem_1.5rem] opacity-35 pointer-events-none" />
-      
-      {/* Target Crosshairs */}
-      <div className="absolute top-4 left-4 font-mono text-[9px] text-text-secondary bg-bg-surface/80 border border-border-subtle rounded-sm px-2.5 py-1.5 space-y-1 z-10">
-        <div className="flex items-center space-x-1">
-          <Crosshair className="w-3 h-3 text-accent-primary" />
-          <span>GRID: CZECH_REPUBLIC_WGS84</span>
-        </div>
-        <p className="text-[8px] text-text-muted">// CLICK MAP TO PLACE SECTOR VERTICES</p>
-      </div>
-
-      <canvas
-        ref={canvasRef}
-        onClick={handleCanvasClick}
-        className="w-full h-full cursor-crosshair relative z-0"
+      {/* MapContainer Reference */}
+      <div
+        ref={mapContainerRef}
+        className="w-full h-full relative z-0"
       />
 
-      {/* Control overlay */}
+      {/* Target Crosshairs */}
+      <div className="absolute top-4 left-4 font-mono text-[9px] text-text-secondary bg-bg-surface/90 border border-border-subtle rounded-sm px-2.5 py-1.5 space-y-1 z-10">
+        <div className="flex items-center space-x-1">
+          <Crosshair className="w-3 h-3 text-accent-primary animate-pulse" />
+          <span>GRID: CZECH_REPUBLIC_ESRI_SAT</span>
+        </div>
+        <p className="text-[8px] text-text-muted">// CLICK SATELLITE TO PLACE SECTOR VERTICES</p>
+      </div>
+
+      {/* Reset control */}
       <div className="absolute bottom-4 right-4 flex space-x-2 z-10">
         <button
           type="button"
           onClick={handleReset}
           className="bg-bg-surface hover:bg-bg-elevated border border-border-default rounded-sm px-3 py-1.5 text-[10px] font-mono tracking-wider flex items-center space-x-1 cursor-pointer transition-colors"
         >
-          <RotateCcw className="w-3 h-3" />
+          <RotateCcw className="w-3 h-3 text-accent-primary" />
           <span>RESET_BOARD</span>
         </button>
       </div>
 
       {/* Info indicator */}
       <div className="absolute bottom-4 left-4 z-10">
-        {points.length === 0 ? (
+        {coords.length === 0 ? (
           <div className="bg-bg-surface/90 border border-border-subtle rounded-sm px-3 py-2 text-[10px] font-mono text-text-secondary flex items-center space-x-1.5">
-            <HelpCircle className="w-3.5 h-3.5 text-accent-info" />
-            <span>Click 3 or more points on the grid, then click the orange starting point to close.</span>
+            <HelpCircle className="w-3.5 h-3.5 text-accent-primary" />
+            <span>Click 3+ points on map, then click orange starting node to lock bounds.</span>
           </div>
         ) : isClosed ? (
           <div className="bg-accent-primary/10 border border-accent-primary/30 rounded-sm px-3 py-2 text-[10px] font-mono text-accent-primary flex items-center space-x-1.5">
             <Check className="w-3.5 h-3.5" />
-            <span>POLYGON CLOSED // SECTOR AREA: {area} ha</span>
+            <span>BOUNDS SECURED // AREA: {area.toFixed(2)} ha</span>
           </div>
         ) : (
           <div className="bg-bg-surface/90 border border-border-subtle rounded-sm px-3 py-2 text-[10px] font-mono text-text-primary flex items-center space-x-1.5">
             <span className="w-2 h-2 rounded-sm bg-accent-warning animate-pulse" />
-            <span>PLACING VERTICES: {points.length} ({coords[coords.length-1]?.join(', ')})</span>
+            <span>PLACING NODES: {coords.length} ({coords[coords.length - 1]?.[1].toFixed(4)}°N, {coords[coords.length - 1]?.[0].toFixed(4)}°E)</span>
           </div>
         )}
       </div>

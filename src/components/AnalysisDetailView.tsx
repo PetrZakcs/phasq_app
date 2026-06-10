@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { Analysis } from '@/lib/data';
 import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip, CartesianGrid } from 'recharts';
@@ -8,6 +8,7 @@ import {
   ArrowLeft, Cpu, ShieldAlert, CheckCircle, Clock, FileText, 
   Download, ArrowRight, Share2, Compass, Waves, Check 
 } from 'lucide-react';
+import 'maplibre-gl/dist/maplibre-gl.css';
 
 interface AnalysisDetailViewProps {
   initialAnalysis: Analysis;
@@ -22,6 +23,134 @@ export default function AnalysisDetailView({ initialAnalysis }: AnalysisDetailVi
   const [copied, setCopied] = useState(false);
 
   const isProcessing = analysis.status === 'pending' || analysis.status === 'processing';
+
+  const mapContainerRef = useRef<HTMLDivElement>(null);
+  const mapRef = useRef<any>(null);
+  const [mapLoaded, setMapLoaded] = useState(false);
+
+  const results = analysis.result_data || {};
+
+  useEffect(() => {
+    if (isProcessing || typeof window === 'undefined' || !mapContainerRef.current) return;
+
+    // Extract geometry from analysis
+    const geom = analysis.aoi_geometry;
+    if (!geom || !geom.coordinates || !geom.coordinates[0]) return;
+
+    const rawCoords = geom.coordinates[0];
+    const avgLng = rawCoords.reduce((sum: number, c: any) => sum + c[0], 0) / rawCoords.length;
+    const avgLat = rawCoords.reduce((sum: number, c: any) => sum + c[1], 0) / rawCoords.length;
+
+    const maplibregl = require('maplibre-gl');
+
+    const map = new maplibregl.Map({
+      container: mapContainerRef.current,
+      style: {
+        version: 8,
+        sources: {
+          'esri-satellite': {
+            type: 'raster',
+            tiles: [
+              'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'
+            ],
+            tileSize: 256,
+            attribution: 'Esri, Maxar'
+          }
+        },
+        layers: [
+          {
+            id: 'esri-satellite-layer',
+            type: 'raster',
+            source: 'esri-satellite',
+            minzoom: 0,
+            maxzoom: 20
+          }
+        ]
+      },
+      center: [avgLng, avgLat],
+      zoom: 14,
+      attributionControl: false
+    });
+
+    mapRef.current = map;
+
+    map.on('load', () => {
+      setMapLoaded(true);
+
+      // Add AOI source
+      map.addSource('aoi-polygon', {
+        type: 'geojson',
+        data: {
+          type: 'Feature',
+          properties: {},
+          geometry: geom
+        }
+      });
+
+      // Fit map viewport to geometry
+      const bounds = rawCoords.reduce(
+        (b: any, coord: any) => b.extend(coord),
+        new maplibregl.LngLatBounds(rawCoords[0], rawCoords[0])
+      );
+      map.fitBounds(bounds, { padding: 40, duration: 0 });
+
+      // Add GEE raster layer or mock heatmap shading
+      const tileUrl = results.geotiff_preview_url;
+      if (tileUrl && tileUrl.startsWith('http') && tileUrl.includes('tiles')) {
+        map.addSource('gee-overlay', {
+          type: 'raster',
+          tiles: [tileUrl],
+          tileSize: 256
+        });
+
+        map.addLayer({
+          id: 'gee-overlay-layer',
+          type: 'raster',
+          source: 'gee-overlay',
+          paint: {
+            'raster-opacity': 0.70
+          }
+        });
+      } else {
+        // Mock heatmap shading
+        const fillColors: Record<string, string> = {
+          ndvi: '#0f9960',
+          ndwi: '#106ba3',
+          radiometric: '#d97706',
+          polarimetric: '#d97706',
+          interferometric: '#8a3ffc'
+        };
+
+        const color = fillColors[analysis.analysis_type] || '#cc0000';
+
+        map.addLayer({
+          id: 'aoi-fill',
+          type: 'fill',
+          source: 'aoi-polygon',
+          paint: {
+            'fill-color': color,
+            'fill-opacity': 0.35
+          }
+        });
+      }
+
+      // Stark Crimson Red outline
+      map.addLayer({
+        id: 'aoi-outline',
+        type: 'line',
+        source: 'aoi-polygon',
+        paint: {
+          'line-color': '#cc0000',
+          'line-width': 3
+        }
+      });
+    });
+
+    return () => {
+      map.remove();
+      mapRef.current = null;
+    };
+  }, [isProcessing, analysis]);
 
   useEffect(() => {
     if (!isProcessing) return;
@@ -145,7 +274,6 @@ export default function AnalysisDetailView({ initialAnalysis }: AnalysisDetailVi
   }
 
   // COMPLETED DETAILS
-  const results = analysis.result_data || {};
   const isNdvi = analysis.analysis_type === 'ndvi';
   const isNdwi = analysis.analysis_type === 'ndwi';
 
@@ -242,27 +370,10 @@ export default function AnalysisDetailView({ initialAnalysis }: AnalysisDetailVi
               <span className="text-[9px] font-mono text-text-muted">GEE_WGS84_PROJ</span>
             </div>
 
-            <div className="flex-grow bg-bg-primary border border-border-subtle rounded-sm relative overflow-hidden flex flex-col justify-center items-center">
-              <div className="absolute inset-0 bg-[linear-gradient(to_right,#161d24_1px,transparent_1px),linear-gradient(to_bottom,#161d24_1px,transparent_1px)] bg-[size:1.5rem_1.5rem] opacity-35 pointer-events-none" />
-              
-              {/* Desaturated planar borders representing the coordinates sector bounds */}
-              <div className="absolute w-48 h-32 border border-border-default rounded-sm flex flex-col justify-between p-1.5 pointer-events-none">
-                <div className="w-1.5 h-1.5 border-t border-l border-text-muted" />
-                <div className="w-1.5 h-1.5 border-b border-r border-text-muted self-end" />
-              </div>
-
-              {/* Central crosshair */}
-              <div className="font-mono text-center space-y-1 z-10">
-                <Compass className="w-5 h-5 text-text-muted mx-auto" />
-                <p className="text-[10px] font-bold text-text-primary uppercase">{analysis.aoi_name}</p>
-                <p className="text-[8px] text-text-muted">// SPECTRUM: {analysis.analysis_type.toUpperCase()}_MAP</p>
-              </div>
-
-              {/* Bottom right coordinate */}
-              <div className="absolute bottom-2 right-2 font-mono text-[8px] text-text-muted bg-bg-secondary/70 border border-border-subtle px-1 rounded-sm">
-                15.602°E // 49.395°N
-              </div>
-            </div>
+            <div
+              ref={mapContainerRef}
+              className="flex-grow bg-bg-primary border border-border-subtle rounded-sm relative overflow-hidden h-[250px]"
+            />
 
             {/* Colors scale legend */}
             <div className="mt-4 pt-3 border-t border-border-subtle">
