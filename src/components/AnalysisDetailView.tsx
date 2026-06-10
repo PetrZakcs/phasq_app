@@ -55,6 +55,13 @@ export default function AnalysisDetailView({ initialAnalysis }: AnalysisDetailVi
             ],
             tileSize: 256,
             attribution: 'Esri, Maxar'
+          },
+          'esri-labels': {
+            type: 'raster',
+            tiles: [
+              'https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}'
+            ],
+            tileSize: 256
           }
         },
         layers: [
@@ -143,6 +150,15 @@ export default function AnalysisDetailView({ initialAnalysis }: AnalysisDetailVi
           'line-color': '#cc0000',
           'line-width': 3
         }
+      });
+
+      // Add reference labels layer on top of all indices
+      map.addLayer({
+        id: 'esri-labels-layer',
+        type: 'raster',
+        source: 'esri-labels',
+        minzoom: 0,
+        maxzoom: 20
       });
     });
 

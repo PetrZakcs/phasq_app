@@ -10,9 +10,10 @@ interface AoiDrawerMapProps {
   onPolygonCreated: (geojson: any, areaHa: number) => void;
   maxQuota: number;
   initialGeometry?: any;
+  mapCenterLngLat?: [number, number];
 }
 
-export default function AoiDrawerMap({ onPolygonCreated, maxQuota, initialGeometry }: AoiDrawerMapProps) {
+export default function AoiDrawerMap({ onPolygonCreated, maxQuota, initialGeometry, mapCenterLngLat }: AoiDrawerMapProps) {
   const [mapLoaded, setMapLoaded] = useState(false);
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<any>(null);
@@ -47,6 +48,13 @@ export default function AoiDrawerMap({ onPolygonCreated, maxQuota, initialGeomet
             ],
             tileSize: 256,
             attribution: 'Esri, Maxar'
+          },
+          'esri-labels': {
+            type: 'raster',
+            tiles: [
+              'https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}'
+            ],
+            tileSize: 256
           }
         },
         layers: [
@@ -54,6 +62,13 @@ export default function AoiDrawerMap({ onPolygonCreated, maxQuota, initialGeomet
             id: 'esri-satellite-layer',
             type: 'raster',
             source: 'esri-satellite',
+            minzoom: 0,
+            maxzoom: 20
+          },
+          {
+            id: 'esri-labels-layer',
+            type: 'raster',
+            source: 'esri-labels',
             minzoom: 0,
             maxzoom: 20
           }
@@ -274,6 +289,18 @@ export default function AoiDrawerMap({ onPolygonCreated, maxQuota, initialGeomet
     }
   }, [initialGeometry, mapLoaded]);
 
+  // 4. Handle fly-to coordinate updates from parent geocoding queries
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !mapLoaded || !mapCenterLngLat) return;
+
+    map.flyTo({
+      center: mapCenterLngLat,
+      zoom: 15,
+      duration: 1500
+    });
+  }, [mapCenterLngLat, mapLoaded]);
+
   const handleReset = () => {
     setCoords([]);
     setIsClosed(false);
@@ -294,7 +321,7 @@ export default function AoiDrawerMap({ onPolygonCreated, maxQuota, initialGeomet
       <div className="absolute top-4 left-4 font-mono text-[9px] text-text-secondary bg-bg-surface/90 border border-border-subtle rounded-sm px-2.5 py-1.5 space-y-1 z-10">
         <div className="flex items-center space-x-1">
           <Crosshair className="w-3 h-3 text-accent-primary animate-pulse" />
-          <span>GRID: CZECH_REPUBLIC_ESRI_SAT</span>
+          <span>GRID: CZECH_REPUBLIC_ESRI_HYBRID</span>
         </div>
         <p className="text-[8px] text-text-muted">// CLICK SATELLITE TO PLACE SECTOR VERTICES</p>
       </div>

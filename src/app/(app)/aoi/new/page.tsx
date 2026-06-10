@@ -32,6 +32,13 @@ export default function NewAoiPage() {
   const [lpisSearchError, setLpisSearchError] = useState<string | null>(null);
   const [selectedLpisId, setSelectedLpisId] = useState<string | null>(null);
 
+  // Location Search States
+  const [locationQuery, setLocationQuery] = useState('');
+  const [locationResults, setLocationResults] = useState<any[]>([]);
+  const [locationSearching, setLocationSearching] = useState(false);
+  const [locationSearchError, setLocationSearchError] = useState<string | null>(null);
+  const [mapCenterLngLat, setMapCenterLngLat] = useState<[number, number] | undefined>(undefined);
+
   useEffect(() => {
     async function loadQuota() {
       const data = await getProfileQuota();
@@ -39,6 +46,46 @@ export default function NewAoiPage() {
     }
     loadQuota();
   }, []);
+
+  const handleLocationSearch = async () => {
+    if (!locationQuery.trim()) return;
+    setLocationSearching(true);
+    setLocationSearchError(null);
+    setLocationResults([]);
+
+    try {
+      const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(
+        locationQuery.trim()
+      )}&limit=5`;
+
+      const res = await fetch(url, {
+        headers: {
+          'User-Agent': 'PhasqSatelliteConsole/1.0 (Czech Republic Agricultural App)'
+        }
+      });
+
+      if (!res.ok) throw new Error('Search failed');
+      const data = await res.json();
+      setLocationResults(data || []);
+      if (!data || data.length === 0) {
+        setLocationSearchError('Lokalita nebyla nalezena.');
+      }
+    } catch (err: any) {
+      console.error(err);
+      setLocationSearchError('Chyba při vyhledávání lokality.');
+    } finally {
+      setLocationSearching(false);
+    }
+  };
+
+  const handleSelectLocation = (loc: any) => {
+    const lon = parseFloat(loc.lon);
+    const lat = parseFloat(loc.lat);
+    if (!isNaN(lon) && !isNaN(lat)) {
+      setMapCenterLngLat([lon, lat]);
+      setLocationResults([]);
+    }
+  };
 
   const handlePolygonCreated = (geojson: any, computedArea: number) => {
     setGeometry(geojson);
@@ -217,6 +264,63 @@ export default function NewAoiPage() {
               [LPIS Import]
             </button>
           </div>
+
+          {/* Location Search section for Custom Draw */}
+          {activeTab === 'draw' && (
+            <div className="space-y-3 border border-border-subtle p-3 rounded-sm bg-bg-surface/40">
+              <h3 className="text-[10px] font-mono text-accent-primary uppercase tracking-wider font-bold">// Fly to location</h3>
+              
+              <div className="relative flex items-center">
+                <input
+                  type="text"
+                  placeholder="e.g. Jihlava, Humpolec, Praha..."
+                  value={locationQuery}
+                  onChange={(e) => setLocationQuery(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      handleLocationSearch();
+                    }
+                  }}
+                  className="w-full bg-bg-primary border border-border-default rounded-sm px-2.5 py-1.5 text-xs text-text-primary font-mono focus:outline-none focus:border-accent-primary min-h-[34px] pr-8"
+                />
+                <button
+                  type="button"
+                  onClick={handleLocationSearch}
+                  disabled={locationSearching}
+                  className="absolute right-2 text-text-secondary hover:text-text-primary cursor-pointer disabled:opacity-50"
+                >
+                  {locationSearching ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin text-accent-primary" />
+                  ) : (
+                    <Search className="w-3.5 h-3.5 text-accent-primary" />
+                  )}
+                </button>
+              </div>
+
+              {locationResults.length > 0 && (
+                <div className="max-h-[140px] overflow-y-auto space-y-1 font-mono text-[9px] border-t border-border-subtle/50 pt-2 pr-1">
+                  <span className="text-[8px] text-text-muted block">// Click to fly:</span>
+                  {locationResults.map((loc) => (
+                    <button
+                      key={loc.place_id}
+                      type="button"
+                      onClick={() => handleSelectLocation(loc)}
+                      className="w-full text-left p-1.5 border border-border-default hover:border-text-secondary bg-bg-primary/50 text-text-secondary rounded-sm hover:text-text-primary block truncate cursor-pointer transition-colors"
+                    >
+                      {loc.display_name}
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {locationSearchError && (
+                <p className="text-[9px] font-mono text-accent-danger leading-relaxed">
+                  // [SEARCH_ERROR]: {locationSearchError}
+                </p>
+              )}
+            </div>
+          )}
 
           {/* LPIS Search section */}
           {activeTab === 'lpis' && (
@@ -446,6 +550,7 @@ export default function NewAoiPage() {
           onPolygonCreated={handlePolygonCreated}
           maxQuota={remainingQuota}
           initialGeometry={geometry}
+          mapCenterLngLat={mapCenterLngLat}
         />
       </div>
 
